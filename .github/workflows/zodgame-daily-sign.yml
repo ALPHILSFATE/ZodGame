@@ -25,6 +25,5 @@ jobs:
           
       - name: 執行簽到腳本
         env:
-          ZODGAME_USERNAME: ${{ secrets.ZODGAME_USERNAME }}
-          ZODGAME_PASSWORD: ${{ secrets.ZODGAME_PASSWORD }}
+          ZODGAME_COOKIE: ${{ secrets.ZODGAME_COOKIE }}
         run: python sign.py 
