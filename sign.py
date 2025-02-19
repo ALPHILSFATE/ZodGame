@@ -39,6 +39,11 @@ def sign(session):
             print("Cookie 已過期或無效")
             return False
         
+        # 檢查是否已經簽到
+        if '您今天已經簽到過了' in response.text:
+            print("今天已經簽到過了")
+            return True
+            
         # 獲取簽到表單數據
         formhash = re.search(r'name="formhash" value="([^"]+)"', response.text)
         if not formhash:
@@ -58,9 +63,16 @@ def sign(session):
         sign_response = session.post(sign_url, data=sign_data)
         sign_response.raise_for_status()
         
-        if "簽到成功" in sign_response.text:
+        # 檢查回應內容中是否包含成功訊息
+        if "恭喜你签到成功" in sign_response.text or "簽到成功" in sign_response.text:
+            # 嘗試提取獎勵資訊
+            reward_match = re.search(r'获得随机奖励\s*酱油\s*(\d+)\s*瓶', sign_response.text)
+            if reward_match:
+                print(f"簽到成功！獲得酱油 {reward_match.group(1)} 瓶")
+            else:
+                print("簽到成功！")
             return True
-        elif "已經簽到" in sign_response.text:
+        elif "已經簽到" in sign_response.text or "已经签到" in sign_response.text:
             print("今天已經簽到過了")
             return True
         else:
@@ -96,7 +108,8 @@ def main():
     
     try:
         if sign(session):
-            print("簽到成功！")
+            print("簽到操作完成")  # 修改提示訊息
+            exit(0)  # 正常結束
         else:
             print("簽到失敗！")
             exit(1)
