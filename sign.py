@@ -20,6 +20,7 @@ SIGN_URL = urljoin(BASE_URL, 'plugin.php?id=dsu_paulsign:sign')
 # 重試設定
 MAX_RETRIES = 3  # 最大重試次數
 RETRY_DELAY = 60  # 重試間隔（秒）
+LONG_RETRY_DELAY = 3600  # 長時間重試間隔（秒）
 
 # 必要的 cookie 名稱
 ESSENTIAL_COOKIES = [
@@ -62,66 +63,70 @@ def extract_reward(response_text):
 
 def sign_with_retry(session, max_retries=MAX_RETRIES, retry_delay=RETRY_DELAY):
     """帶有重試機制的簽到函數"""
-    for attempt in range(max_retries):
-        try:
-            # 訪問簽到頁面
-            response = session.get(SIGN_URL)
-            response.raise_for_status()
-            
-            # 檢查簽到狀態
-            status = check_sign_status(response.text)
-            if status == 'already_signed':
-                logger.info("今天已經簽到過了")
-                return True
-            elif status == 'not_logged_in':
-                logger.error("Cookie 已過期或無效")
-                return False
-            
-            # 獲取簽到表單數據
-            formhash = extract_formhash(response.text)
-            if not formhash:
-                logger.error("無法獲取 formhash，可能未正確登入")
-                return False
+    attempt = 0
+    while True:
+        for _ in range(max_retries):
+            try:
+                # 訪問簽到頁面
+                response = session.get(SIGN_URL)
+                response.raise_for_status()
                 
-            # 執行簽到
-            sign_data = {
-                'formhash': formhash,
-                'qdxq': 'kx',  # 心情：開心
-                'qdmode': '1',  # 簽到模式
-                'todaysay': '每日簽到',  # 簽到留言
-                'fastreply': '0'
-            }
-            
-            sign_url = f"{SIGN_URL}&operation=qiandao&infloat=1&inajax=1"
-            sign_response = session.post(sign_url, data=sign_data)
-            sign_response.raise_for_status()
-            
-            # 檢查回應內容中是否包含成功訊息
-            if "恭喜你签到成功" in sign_response.text or "簽到成功" in sign_response.text:
-                reward = extract_reward(sign_response.text)
-                if reward:
-                    logger.info(f"簽到成功！獲得酱油 {reward} 瓶")
+                # 檢查簽到狀態
+                status = check_sign_status(response.text)
+                if status == 'already_signed':
+                    logger.info("今天已經簽到過了")
+                    return True
+                elif status == 'not_logged_in':
+                    logger.error("Cookie 已過期或無效")
+                    return False
+                
+                # 獲取簽到表單數據
+                formhash = extract_formhash(response.text)
+                if not formhash:
+                    logger.error("無法獲取 formhash，可能未正確登入")
+                    return False
+                    
+                # 執行簽到
+                sign_data = {
+                    'formhash': formhash,
+                    'qdxq': 'kx',  # 心情：開心
+                    'qdmode': '1',  # 簽到模式
+                    'todaysay': '每日簽到',  # 簽到留言
+                    'fastreply': '0'
+                }
+                
+                sign_url = f"{SIGN_URL}&operation=qiandao&infloat=1&inajax=1"
+                sign_response = session.post(sign_url, data=sign_data)
+                sign_response.raise_for_status()
+                
+                # 檢查回應內容中是否包含成功訊息
+                if "恭喜你签到成功" in sign_response.text or "簽到成功" in sign_response.text:
+                    reward = extract_reward(sign_response.text)
+                    if reward:
+                        logger.info(f"簽到成功！獲得酱油 {reward} 瓶")
+                    else:
+                        logger.info("簽到成功！")
+                    return True
+                elif "已經簽到" in sign_response.text or "已经签到" in sign_response.text:
+                    logger.info("今天已經簽到過了")
+                    return True
                 else:
-                    logger.info("簽到成功！")
-                return True
-            elif "已經簽到" in sign_response.text or "已经签到" in sign_response.text:
-                logger.info("今天已經簽到過了")
-                return True
-            else:
-                logger.warning(f"簽到回應不符合預期：{sign_response.text[:200]}...")
+                    logger.warning(f"簽到回應不符合預期：{sign_response.text[:200]}...")
+                    
+            except requests.RequestException as e:
+                logger.error(f"第 {attempt + 1} 次嘗試失敗：{str(e)}")
+            except Exception as e:
+                logger.error(f"第 {attempt + 1} 次嘗試發生錯誤：{str(e)}")
                 
-        except requests.RequestException as e:
-            logger.error(f"第 {attempt + 1} 次嘗試失敗：{str(e)}")
-        except Exception as e:
-            logger.error(f"第 {attempt + 1} 次嘗試發生錯誤：{str(e)}")
-            
-        # 如果不是最後一次嘗試，則等待後重試
-        if attempt < max_retries - 1:
-            logger.info(f"等待 {retry_delay} 秒後重試...")
-            time.sleep(retry_delay)
+            # 如果不是最後一次嘗試，則等待後重試
+            if attempt < max_retries - 1:
+                logger.info(f"等待 {retry_delay} 秒後重試...")
+                time.sleep(retry_delay)
+            attempt += 1
         
-    logger.error(f"已達到最大重試次數 {max_retries}，簽到失敗")
-    return False
+        # 等待一小時後重試
+        logger.info(f"等待 {LONG_RETRY_DELAY} 秒後重新嘗試...")
+        time.sleep(LONG_RETRY_DELAY)
 
 def main():
     try:
@@ -157,4 +162,4 @@ def main():
         exit(1)
 
 if __name__ == "__main__":
-    main() 
+    main()
